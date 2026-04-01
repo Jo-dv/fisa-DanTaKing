@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+// Recharts 컴포넌트 임포트
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 
 interface PriceData {
   price: number;
@@ -9,56 +11,96 @@ interface PriceData {
   timestamp: string;
 }
 
+// 차트 데이터 타입 정의
+interface ChartData {
+  time: string;
+  price: number;
+}
+
 export default function Dashboard() {
   const INITIAL_SEED = 1000000000;
-  
+  const MAX_CHART_DATA = 50; // 차트에 표시할 최대 데이터 개수
+
   const [seed, setSeed] = useState<number>(INITIAL_SEED);
   const [holdings, setHoldings] = useState<number>(0);
   const [orderQty, setOrderQty] = useState<string>("1");
   const [priceData, setPriceData] = useState<PriceData>({
     price: 103300000,
     change: "RISE",
-    changePrice: 25000,
+    changePrice: 0,
     timestamp: new Date().toISOString(),
   });
+  
+  // 차트 데이터를 저장할 상태
+  const [chartData, setChartData] = useState<ChartData[]>([]);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
+    // 초기 차트 데이터 생성 (현재가 기준)
+    const initialData: ChartData[] = Array.from({ length: MAX_CHART_DATA }, (_, i) => ({
+      time: new Date(Date.now() - (MAX_CHART_DATA - i) * 1000).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      price: 103300000,
+    }));
+    setChartData(initialData);
+
     const fetchPrice = async () => {
       try {
-        // 실제 API 연동 시 아래 주석을 해제하고 URL을 백엔드 주소로 변경하세요.
+        // 실제 API 연동 시 주석 해제
         // const response = await fetch("http://localhost:8080/price/stream");
         // if (!response.ok) throw new Error("Network response was not ok");
-        // const data = await response.json();
-        // setPriceData(data);
+        // const data: PriceData = await response.json();
+        
+        // Mock 데이터 생성 (테스트용)
+        const diff = Math.floor(Math.random() * 2000000) - 1000000;
+        const newPrice = Math.max(10000000, priceData.price + diff); // 가격이 0 이하로 내려가지 않도록 처리
+        const data: PriceData = {
+          price: newPrice,
+          change: diff >= 0 ? "RISE" : "FALL",
+          changePrice: diff,
+          timestamp: new Date().toISOString()
+        };
 
-        // 테스트를 위한 임시 데이터 생성 로직 (실제 연동 시 삭제)
-        setPriceData(prev => {
-          const diff = Math.floor(Math.random() * 2000000) - 1000000;
-          const newPrice = prev.price + diff;
-          return {
-            price: newPrice,
-            change: diff >= 0 ? "RISE" : "FALL",
-            changePrice: diff,
-            timestamp: new Date().toISOString()
+        setPriceData(data);
+
+        // 차트 데이터 업데이트
+        setChartData((prev) => {
+          const newEntry: ChartData = {
+            time: new Date(data.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            price: data.price,
           };
+          const updatedData = [...prev, newEntry];
+          // MAX_CHART_DATA 개수만큼 유지 (오래된 데이터 삭제)
+          if (updatedData.length > MAX_CHART_DATA) {
+            return updatedData.slice(1);
+          }
+          return updatedData;
         });
+
       } catch (error) {
         console.error("가격 정보 조회 실패:", error);
       }
     };
 
-    // 1초 주기로 API 호출 (Polling)
     const intervalId = setInterval(fetchPrice, 1000);
     return () => clearInterval(intervalId);
   }, []);
 
+  // Y축 범위 계산 (최소/최대값에 여유 공간 둠)
+  const prices = chartData.map(d => d.price);
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const yAxisDomain = [
+    Math.floor(minPrice * 0.999), 
+    Math.ceil(maxPrice * 1.001)
+  ];
+
+  // 매수/매도 로직 (기존과 동일)
   const handleBuy = () => {
     const qty = parseFloat(orderQty);
     if (isNaN(qty) || qty <= 0) return alert("올바른 수량을 입력하세요.");
-
     const totalCost = qty * priceData.price;
-    if (totalCost > seed) return alert("시드가 부족합니다. 내 시드보다 큰 금액은 매수할 수 없습니다.");
-
+    if (totalCost > seed) return alert("시드가 부족합니다.");
     setSeed(prev => prev - totalCost);
     setHoldings(prev => prev + qty);
   };
@@ -66,9 +108,7 @@ export default function Dashboard() {
   const handleSell = () => {
     const qty = parseFloat(orderQty);
     if (isNaN(qty) || qty <= 0) return alert("올바른 수량을 입력하세요.");
-
     if (qty > holdings) return alert("보유 수량이 부족합니다.");
-
     const totalRevenue = qty * priceData.price;
     setSeed(prev => prev + totalRevenue);
     setHoldings(prev => prev - qty);
@@ -77,70 +117,120 @@ export default function Dashboard() {
   const priceColor = priceData.change === "RISE" ? "text-green-500" : "text-red-500";
   const totalAssets = seed + (holdings * priceData.price);
 
+  if (!isMounted) return null;
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-8 flex flex-col items-center font-sans">
-      
-      {/* 1. 사용자 시드 화면 중앙 상단 */}
-      <header className="mb-12 text-center w-full max-w-2xl bg-gray-800 p-6 rounded-xl shadow-md border border-gray-700">
-        <h1 className="text-xl text-gray-400 mb-2">현재 보유 시드</h1>
-        <div className="text-4xl font-bold tracking-tight">{Math.floor(seed).toLocaleString()} 원</div>
-        <div className="mt-4 flex justify-between text-sm text-gray-400 px-4">
-          <span>보유 코인: {holdings.toFixed(4)} BTC</span>
-          <span>총 자산: {Math.floor(totalAssets).toLocaleString()} 원</span>
-        </div>
-      </header>
+      <div className="h-screen w-screen bg-gray-950 text-white p-4 flex flex-col gap-4 font-sans overflow-hidden box-border">
+        
+        {/* 1. 상단: 사용자 시드 및 자산 요약 (가로 배치로 공간 절약) */}
+        <header className="shrink-0 w-full bg-gray-900 p-4 rounded-xl border border-gray-800 flex flex-col md:flex-row justify-between items-center">
+          <div className="flex items-end gap-3">
+            <h1 className="text-sm text-gray-400 font-medium pb-1">보유 시드</h1>
+            <div className="text-3xl font-extrabold text-blue-400">
+              {Math.floor(seed).toLocaleString()} <span className="text-xl text-gray-200">원</span>
+            </div>
+          </div>
+          <div className="flex gap-6 text-sm text-gray-300 mt-2 md:mt-0">
+            <p>보유 코인: <span className="font-bold text-white">{holdings.toFixed(4)} BTC</span></p>
+            <p>총 자산: <span className="font-bold text-white">{Math.floor(totalAssets).toLocaleString()} 원</span></p>
+          </div>
+        </header>
 
-      {/* 4. 형태는 대시보드 형태 */}
-      <main className="w-full max-w-2xl bg-gray-800 p-10 rounded-xl shadow-md border border-gray-700 mb-12 flex flex-col items-center">
-        <h2 className="text-lg text-gray-400 mb-6">BTC/KRW 실시간 가격</h2>
-        
-        {/* 2. 오르면 초록색 / 3. 떨어지면 빨간색 */}
-        <div className={`text-6xl font-bold mb-4 ${priceColor} transition-colors duration-300`}>
-          {priceData.price.toLocaleString()} 원
-        </div>
-        
-        <div className={`text-2xl font-medium ${priceColor}`}>
-          {priceData.change === "RISE" ? "▲ +" : "▼ "} 
-          {priceData.changePrice.toLocaleString()} 원
-        </div>
-        
-        <div className="mt-8 text-sm text-gray-500">
-          마지막 업데이트: {new Date(priceData.timestamp).toLocaleTimeString()}
-        </div>
-      </main>
+        {/* 2. 중단: 가격 시세 및 주문 영역 */}
+        <div className="shrink-0 w-full grid grid-cols-1 lg:grid-cols-3 gap-4">
+          
+          {/* 시세 패널 */}
+          <main className="lg:col-span-2 bg-gray-900 p-6 rounded-xl border border-gray-800 flex flex-col items-center justify-center">
+            <div className={`text-5xl font-extrabold mb-2 ${priceColor} transition-colors tracking-tight`}>
+              {priceData.price.toLocaleString()} 원
+            </div>
+            <div className={`text-xl font-semibold flex items-center gap-2 ${priceColor}`}>
+              {priceData.change === "RISE" ? "▲" : "▼"} 
+              {Math.abs(priceData.changePrice).toLocaleString()} 원
+              <span className="text-sm opacity-80">({((priceData.changePrice / (priceData.price - priceData.changePrice)) * 100).toFixed(2)}%)</span>
+            </div>
+          </main>
 
-      {/* 5. 매수, 매도 버튼 하단 배치 */}
-      <footer className="w-full max-w-2xl bg-gray-800 p-6 rounded-xl shadow-md border border-gray-700 flex flex-col gap-6">
-        <div className="flex items-center gap-4">
-          <label className="text-gray-400 whitespace-nowrap font-medium">주문 수량 (BTC) :</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0.01"
-            value={orderQty}
-            onChange={(e) => setOrderQty(e.target.value)}
-            className="w-full bg-gray-900 border border-gray-600 text-white p-3 rounded-lg outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-            placeholder="수량을 입력하세요"
-          />
+          {/* 주문 패널 */}
+          <footer className="bg-gray-900 p-4 rounded-xl border border-gray-800 flex flex-col justify-between">
+            <div className="flex flex-col gap-2 mb-4">
+              <label className="text-sm text-gray-400 font-medium">주문 수량 (BTC)</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={orderQty}
+                onChange={(e) => setOrderQty(e.target.value)}
+                className="w-full bg-gray-950 border border-gray-700 text-white p-3 rounded-lg outline-none focus:border-blue-500 transition-all text-base font-bold"
+                placeholder="0.0000"
+              />
+            </div>
+            <div className="flex gap-3 mt-auto">
+              <button
+                onClick={handleBuy}
+                className="flex-1 bg-green-600 hover:bg-green-500 text-white text-lg font-bold py-3 rounded-lg transition-colors active:scale-95"
+              >
+                매수
+              </button>
+              <button
+                onClick={handleSell}
+                className="flex-1 bg-red-600 hover:bg-red-500 text-white text-lg font-bold py-3 rounded-lg transition-colors active:scale-95"
+              >
+                매도
+              </button>
+            </div>
+          </footer>
         </div>
-        
-        <div className="flex gap-4">
-          {/* 6. 매수에 따른 시드 변화 반영 / 8. 내 시드 보다 큰 건수 매수 불가 */}
-          <button
-            onClick={handleBuy}
-            className="flex-1 bg-green-600 hover:bg-green-500 text-white text-lg font-bold py-4 rounded-lg transition-colors"
-          >
-            매수
-          </button>
-          {/* 6. 매도에 따른 시드 변화 반영 / 7. 시드는 음수가 될 수 없음 */}
-          <button
-            onClick={handleSell}
-            className="flex-1 bg-red-600 hover:bg-red-500 text-white text-lg font-bold py-4 rounded-lg transition-colors"
-          >
-            매도
-          </button>
+
+        {/* 3. 하단: 차트 영역 (남은 화면 높이를 모두 차지함) */}
+        <div className="flex-1 w-full bg-gray-900 p-4 rounded-xl border border-gray-800 flex flex-col min-h-0">
+          <div className="flex justify-between items-center mb-2 shrink-0">
+            <h3 className="text-sm text-gray-400 font-medium">가격 추이 (최근 50초)</h3>
+            <span className="text-xs text-gray-500">최신 업데이트: {new Date(priceData.timestamp).toLocaleTimeString('ko-KR', { hour12: false })}</span>
+          </div>
+          <div className="flex-1 w-full min-h-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <LineChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2D3748" vertical={false} />
+                <XAxis 
+                  dataKey="time" 
+                  stroke="#718096" 
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  interval={9}
+                />
+                <YAxis 
+                  stroke="#718096" 
+                  fontSize={11} 
+                  domain={yAxisDomain} 
+                  tickFormatter={(value) => value.toLocaleString()}
+                  tickLine={false}
+                  axisLine={false}
+                  width={70}
+                />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#1A202C', border: '1px solid #2D3748', borderRadius: '8px', padding: '8px' }}
+                  labelStyle={{ color: '#A0AEC0', marginBottom: '2px', fontSize: '12px' }}
+                  itemStyle={{ color: '#F7FAFC', fontWeight: 'bold', fontSize: '14px' }}
+                  formatter={(value: any) => [Number(value).toLocaleString() + " 원", "가격"]}
+                  labelFormatter={(label) => `시간: ${label}`}
+                  cursor={{ stroke: '#4A5568', strokeWidth: 1 }}
+                />
+                <ReferenceLine y={priceData.price} stroke="#4A5568" strokeDasharray="3 3" />
+                <Line 
+                  type="monotone" 
+                  dataKey="price" 
+                  stroke={priceData.change === "RISE" ? "#10B981" : "#EF4444"} 
+                  strokeWidth={2}
+                  dot={false} 
+                  isAnimationActive={false} 
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-      </footer>
-    </div>
+
+      </div>
   );
 }
