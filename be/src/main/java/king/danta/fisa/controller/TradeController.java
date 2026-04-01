@@ -1,26 +1,52 @@
 package king.danta.fisa.controller;
 
+import king.danta.fisa.dto.TradeErrorResponse;
 import king.danta.fisa.dto.TradeResponse;
 import king.danta.fisa.service.TradeService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequestMapping("/trade")
 public class TradeController {
 
-    private final TradeService tradeService = new TradeService();
+    private final TradeService tradeService;
 
-    @PostMapping("/trade/buy")
-    public TradeResponse buy() {
-        // TODO : flux로 변경
-        long stubPrice = 30_400;
-        return tradeService.buy(stubPrice);
+    public TradeController(TradeService tradeService) {
+        this.tradeService = tradeService;
     }
 
-    @PostMapping("/trade/sell")
-    public TradeResponse sell() {
+    @PostMapping("/buy")
+    public ResponseEntity<?> buy() {
         // TODO : flux로 변경
-        long stubPrice = 30_500;
-        return tradeService.sell(stubPrice);
+        long stubPrice = 100_000_500L;
+        try {
+            TradeResponse response = tradeService.buy(stubPrice);
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+
+            return ResponseEntity
+                    .internalServerError()
+                    .body(new TradeErrorResponse("FAIL", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/sell")
+    public ResponseEntity<?> sell() {
+        // TODO : flux로 변경
+        long stubPrice = 100_000_000L;
+        try {
+            TradeResponse response = tradeService.sell(stubPrice);
+            return ResponseEntity.ok(response);
+
+        } catch (RuntimeException e) {
+
+            return ResponseEntity
+                    .internalServerError()
+                    .body(new TradeErrorResponse("FAIL", e.getMessage()));
+        }
     }
 }
