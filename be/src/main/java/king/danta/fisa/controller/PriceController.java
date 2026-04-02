@@ -1,23 +1,28 @@
 package king.danta.fisa.controller;
 
-import king.danta.fisa.client.UpbitApiClient;
-import king.danta.fisa.dto.UpbitResponse;
+import king.danta.fisa.dto.PriceStreamResponse;
+import king.danta.fisa.service.PriceService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
 
 @RestController
 @RequiredArgsConstructor
 public class PriceController {
 
-    private final UpbitApiClient upbitApiClient;
+    private final PriceService priceService;
 
-    @GetMapping("/price/stream")
-    public UpbitResponse getTickerData() {
-        // 테스트
-        UpbitResponse response = upbitApiClient.getTickerData();
-        System.out.println("tradePrice: " + response.tradePrice());
-        System.out.println("timestamp: " + response.timestamp());
-        return response;
+
+    @GetMapping(value = "/price/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<PriceStreamResponse>> priceSteram() {
+        return priceService.stream()
+                .map(data -> ServerSentEvent.<PriceStreamResponse>builder()
+                        .event("price-quote")
+                        .data(data)
+                        .build());
     }
+
 }
