@@ -16,7 +16,7 @@ public class PriceService {
     private final AtomicLong previousPrice = new AtomicLong(0);
 
     public PriceService(UpbitApiClient upbitApiClient){
-        this.priceFlux = Flux.interval(Duration.ofMillis(500))
+        this.priceFlux = Flux.interval(Duration.ofMillis(200))
                 .flatMap(tick -> upbitApiClient.getTickerData())
                 .map(this::toResponse)
                 .onBackpressureLatest()
