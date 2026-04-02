@@ -44,46 +44,22 @@ export default function Dashboard() {
     }));
     setChartData(initialData);
 
-    const fetchPrice = async () => {
-      try {
-        // 실제 API 연동 시 주석 해제
-        // const response = await fetch("http://localhost:8080/price/stream");
-        // if (!response.ok) throw new Error("Network response was not ok");
-        // const data: PriceData = await response.json();
-        
-        // Mock 데이터 생성 (테스트용)
-        const diff = Math.floor(Math.random() * 2000000) - 1000000;
-        const newPrice = Math.max(10000000, priceData.price + diff); // 가격이 0 이하로 내려가지 않도록 처리
-        const data: PriceData = {
-          price: newPrice,
-          change: diff >= 0 ? "RISE" : "FALL",
-          changePrice: diff,
-          timestamp: new Date().toISOString()
+    const eventSource = new EventSource("http://localhost:8080/price/stream");
+
+    eventSource.addEventListener("price-quote", (e) => {
+      const data: PriceData = JSON.parse(e.data);
+      setPriceData(data);
+      setChartData((prev) => {
+        const newEntry: ChartData = {
+          time: new Date(data.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          price: data.price,
         };
+        const updated = [...prev, newEntry];
+        return updated.length > MAX_CHART_DATA ? updated.slice(1) : updated;
+      });
+    });
 
-        setPriceData(data);
-
-        // 차트 데이터 업데이트
-        setChartData((prev) => {
-          const newEntry: ChartData = {
-            time: new Date(data.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            price: data.price,
-          };
-          const updatedData = [...prev, newEntry];
-          // MAX_CHART_DATA 개수만큼 유지 (오래된 데이터 삭제)
-          if (updatedData.length > MAX_CHART_DATA) {
-            return updatedData.slice(1);
-          }
-          return updatedData;
-        });
-
-      } catch (error) {
-        console.error("가격 정보 조회 실패:", error);
-      }
-    };
-
-    const intervalId = setInterval(fetchPrice, 1000);
-    return () => clearInterval(intervalId);
+    return () => eventSource.close();
   }, []);
 
   // Y축 범위 계산 (최소/최대값에 여유 공간 둠)
